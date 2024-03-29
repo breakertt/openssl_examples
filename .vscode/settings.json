@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "ssl.h": "c",
+        "err.h": "c",
+        "kdf.h": "c",
+        "core_names.h": "c",
+        "bio.h": "c",
+        "inet.h": "c"
+    }
+}

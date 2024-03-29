@@ -12,18 +12,18 @@ int main(int argc, char **argv)
   /* --- CONFIGURE PEER SOCKET --- */
 
   // port name, optionally take from args
-  int port = argc>1? atoi(argv[1]):443;
+  int port = argc>1? atoi(argv[1]):55555;
 
   // host IP address. Attention! This must be a numeric address, not a server
   // host name, because this example code does not perform address lookup.
-  char* host_ip = "2600:9000:225d:600:14:c251:2440:93a1";
+  const char* host_ip = "127.0.0.1";
 
   // provide the hostname if this SSL client needs to use SNI to tell the server
   // what certificate to use
-  const char * host_name = "api.huobi.pro";
+  const char * host_name = NULL;
 
   // socket family, AF_INET (ipv4) or AF_INET6 (ipv6), must match host_ip above
-  int ip_family = AF_INET6;
+  int ip_family = AF_INET;
 
   /* Example for localhost connection
      int port = argc>1? atoi(argv[1]):55555;
@@ -128,4 +128,3 @@ int main(int argc, char **argv)
 
   return 0;
 }
-

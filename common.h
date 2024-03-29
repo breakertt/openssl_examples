@@ -5,10 +5,10 @@
   it under the terms of the MIT license. See LICENSE for details.
 */
 
-#include <openssl/bio.h>
 #include <openssl/err.h>
-#include <openssl/pem.h>
 #include <openssl/ssl.h>
+#include <openssl/kdf.h>
+#include <openssl/core_names.h>
 
 #include <arpa/inet.h>
 #include <poll.h>
@@ -86,6 +86,8 @@ void ssl_client_init(struct ssl_client *p,
   p->rbio = BIO_new(BIO_s_mem());
   p->wbio = BIO_new(BIO_s_mem());
   p->ssl = SSL_new(ctx);
+
+  // SSL_set_cipher_list()
 
   if (mode == SSLMODE_SERVER)
     SSL_set_accept_state(p->ssl);  /* ssl server mode */
@@ -200,6 +202,16 @@ enum sslstatus do_ssl_handshake()
   return status;
 }
 
+static void hexdump(const char *title, void *buf, size_t len) {
+  printf("%s (%lu bytes) :\n", title, len);
+  for (int i = 0; i < len; i++) {
+    printf("%02hhx", ((uint8_t *)buf)[i]);
+    if (i % 16 == 15) printf("\n");
+  }
+  printf("\n");
+}
+
+
 /* Process SSL bytes received from the peer. The data needs to be fed into the
    SSL object to be unencrypted.  On success, returns 0, on SSL error -1. */
 int on_read_cb(char* src, size_t len)
@@ -222,6 +234,39 @@ int on_read_cb(char* src, size_t len)
         return -1;
       if (!SSL_is_init_finished(client.ssl))
         return 0;
+
+      SSL_SESSION *sess = SSL_get_session(client.ssl);
+      printf("TLS Version: %s, TLS Cipher: %s\n", SSL_get_version(client.ssl), SSL_get_cipher(client.ssl));
+
+      int masterkeylen = SSL_SESSION_get_master_key(sess, NULL, 0);
+      printf("masterkeylen %d\n", masterkeylen);
+      char masterkey[masterkeylen];
+      SSL_SESSION_get_master_key(sess, masterkey, masterkeylen);
+      hexdump("master key", masterkey, masterkeylen);
+
+      EVP_KDF *kdf;
+      EVP_KDF_CTX *kctx;
+      unsigned char out[10];
+      OSSL_PARAM params[5], *p = params;
+
+      kdf = EVP_KDF_fetch(NULL, "HKDF", NULL);
+      kctx = EVP_KDF_CTX_new(kdf);
+      EVP_KDF_free(kdf);
+
+      *p++ = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_DIGEST,
+                                              SN_sha256, strlen(SN_sha256));
+      *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_KEY,
+                                              "secret", (size_t)6);
+      *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_INFO,
+                                              "label", (size_t)5);
+      *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SALT,
+                                              "salt", (size_t)4);
+      *p = OSSL_PARAM_construct_end();
+      if (EVP_KDF_derive(kctx, out, sizeof(out), params) <= 0) {
+          error("EVP_KDF_derive");
+      }
+
+      EVP_KDF_CTX_free(kctx);
     }
 
     /* The encrypted data is now in the input bio so now we can perform actual
@@ -371,4 +416,3 @@ void ssl_init(const char * certfile, const char* keyfile)
   /* Recommended to avoid SSLv2 & SSLv3 */
   SSL_CTX_set_options(ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
 }
-
